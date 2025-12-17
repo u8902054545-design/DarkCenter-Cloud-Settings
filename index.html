@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройки</title>
+    <!-- Подключение Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Установка шрифта Inter -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Material 3 Switch Styling */
+        .switch-container {
+            width: 44px; /* Material 3 standard width */
+            height: 24px; /* Material 3 standard height */
+            cursor: pointer;
+        }
+
+        .switch-track {
+            background-color: #555;
+            transition: background-color 0.3s ease;
+        }
+        
+        /* ИСПРАВЛЕНИЕ: Теперь все позиционирование управляется CSS */
+        .switch-thumb {
+            width: 16px;
+            height: 16px;
+            position: absolute;
+            top: 50%; /* Всегда центрируем вертикально */
+            left: 4px; /* Начальное горизонтальное положение */
+            transform: translateY(-50%); /* Применяем вертикальную центровку */
+            transition: transform 0.3s ease, background-color 0.3s ease;
+            background-color: white; /* Цвет ползунка */
+        }
+
+        .switch-container.active .switch-track {
+            background-color: #0000FF; /* Активный цвет: #0000FF */
+        }
+
+        .switch-container.active .switch-thumb {
+            /* Объединяем горизонтальное перемещение (20px) и вертикальную центровку (-50%) */
+            transform: translate(20px, -50%); 
+        }
+
+    </style>
+</head>
+<body class="bg-[#0F0F0F] text-white min-h-screen antialiased">
+
+    <!-- Заголовок страницы -->
+    <header class="p-4 flex items-center justify-center relative border-b border-gray-800 shadow-lg">
+        <!-- Значок «Назад» -->
+        <a href="https://u8902054545-design.github.io/DarkCenter-Cloud-User-Main/"
+           aria-label="Назад"
+           class="absolute left-4 p-2 rounded-full text-white/90 transition duration-150 
+                  hover:bg-gray-800 active:bg-gray-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6">
+                <path d="m15 18-6-6 6-6"/>
+            </svg>
+        </a>
+        <!-- Текст "Настройки" -->
+        <h1 class="text-base font-bold text-white tracking-wide">
+            Настройки
+        </h1>
+    </header>
+
+    <!-- Основное содержимое страницы -->
+    <main class="p-4 sm:p-6 lg:p-8">
+        <div class="space-y-4">
+
+            <!-- Элемент Настройки Уведомлений -->
+            <div id="notifications-setting" 
+                 class="flex justify-between items-center bg-[#1D1D1D] p-4 rounded-xl shadow-md transition duration-200 hover:bg-[#2A2A2A] cursor-pointer"
+                 role="button"
+                 aria-label="Переключить уведомления">
+                
+                <span class="text-gray-200 text-lg">Уведомления</span>
+                
+                <!-- Переключатель (Switch) -->
+                <div id="notification-switch" class="switch-container relative flex items-center p-0.5 rounded-full">
+                    <div class="switch-track absolute inset-0 rounded-full"></div>
+                    <!-- Удалены Tailwind классы top-1/2 и -translate-y-1/2, т.к. они конфликтуют с анимацией -->
+                    <div class="switch-thumb rounded-full"></div>
+                </div>
+            </div>
+
+            <!-- Другие настройки -->
+            <div class="flex justify-between items-center bg-[#1D1D1D] p-4 rounded-xl shadow-md transition duration-200 hover:bg-[#2A2A2A]">
+                <span class="text-gray-200 text-lg">Язык интерфейса</span>
+                <span class="text-blue-400">Русский</span>
+            </div>
+            
+            <div id="user-id-display" class="mt-8 text-xs text-gray-500 text-center">
+                <!-- Здесь будет отображаться ID пользователя для отладки -->
+            </div>
+            
+        </div>
+    </main>
+
+    <!-- ИМПОРТ И НАСТРОЙКА FIREBASE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Глобальные переменные среды (предоставляются Canvas)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db;
+        let auth;
+        let userId = null;
+        let settingsDocRef = null;
+
+        const notificationSwitch = document.getElementById('notification-switch');
+        const notificationsSetting = document.getElementById('notifications-setting');
+        const userIdDisplay = document.getElementById('user-id-display');
+
+        // 1. Инициализация Firebase и Аутентификация
+        async function initializeAppAndAuth() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Вход пользователя
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Ожидание завершения аутентификации и получение userId
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = `User ID: ${userId}`;
+                        
+                        // Определяем путь к документу с настройками (Приватные данные)
+                        const docPath = `/artifacts/${appId}/users/${userId}/settings`;
+                        settingsDocRef = doc(db, docPath, 'notifications');
+                        
+                        console.log("Firebase инициализирован. Doc path:", settingsDocRef.path);
+                        
+                        setupRealtimeListener();
+                        setupToggleListener();
+                    } else {
+                        console.error("Пользователь не аутентифицирован.");
+                    }
+                });
+
+            } catch (error) {
+                console.error("Ошибка инициализации Firebase:", error);
+            }
+        }
+
+        // 2. Функция для обновления Firestore
+        async function updateNotificationStatus(isEnabled) {
+            if (!settingsDocRef) return;
+            try {
+                // Если документ еще не существует, он будет создан
+                await setDoc(settingsDocRef, { isEnabled: isEnabled }, { merge: true });
+                // console.log("Статус уведомлений обновлен в Firestore:", isEnabled);
+            } catch (error) {
+                console.error("Ошибка при записи в Firestore:", error);
+            }
+        }
+
+        // 3. Установка слушателя в реальном времени (onSnapshot)
+        function setupRealtimeListener() {
+            if (!settingsDocRef) return;
+
+            onSnapshot(settingsDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    // Если поле не определено, считаем, что оно выключено
+                    const isEnabled = data.isEnabled === true; 
+                    
+                    // Обновляем UI
+                    updateUISwitch(isEnabled);
+                } else {
+                    // Если документ не существует, устанавливаем значение по умолчанию (false) и записываем его
+                    updateNotificationStatus(false);
+                }
+            }, (error) => {
+                console.error("Ошибка Realtime-слушателя:", error);
+            });
+        }
+
+        // 4. Функция для обновления визуального состояния переключателя
+        function updateUISwitch(isEnabled) {
+            if (isEnabled) {
+                notificationSwitch.classList.add('active');
+            } else {
+                notificationSwitch.classList.remove('active');
+            }
+        }
+
+        // 5. Установка обработчика клика
+        function setupToggleListener() {
+            notificationsSetting.addEventListener('click', () => {
+                // Определяем текущий статус по классу 'active'
+                const currentState = notificationSwitch.classList.contains('active');
+                const newState = !currentState;
+
+                // Обновляем Firestore, что автоматически обновит UI через onSnapshot
+                updateNotificationStatus(newState);
+            });
+        }
+
+        // Запуск приложения
+        initializeAppAndAuth();
+    </script>
+</body>
+</html>
